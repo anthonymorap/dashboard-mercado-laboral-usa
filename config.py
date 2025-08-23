@@ -1,0 +1,180 @@
+"""
+Configuración general del proyecto Dashboard Mercado Laboral USA
+"""
+
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
+
+# APIs Configuration
+BLS_API_KEY = os.getenv('BLS_API_KEY', '')
+FRED_API_KEY = os.getenv('FRED_API_KEY', '')
+
+# URLs Base de las APIs
+BLS_BASE_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
+
+# Series IDs para las métricas clave
+SERIES_MAPPING = {
+    # FRED Series
+    'unemployment_rate': 'UNRATE',              # Tasa de Desempleo
+    'job_openings': 'JTSJOL',                   # Vacantes de Trabajo
+    'quits_rate': 'JTSQUR',                     # Tasa de Renuncias
+    'layoffs_rate': 'JTSLDR',                   # Tasa de Despidos
+    'labor_force_participation': 'CIVPART',     # Tasa de Participación Laboral
+    
+    # BLS Series - estas necesitan formato especial
+    'payroll_employment': 'CES0000000001',      # Total Nonfarm Payrolls
+    'avg_hourly_earnings': 'CES0500000003',     # Average Hourly Earnings
+    'employment_cost_index': 'CIU2010000000000SA', # Employment Cost Index
+}
+
+# Configuración de datos
+DATA_UPDATE_HOUR = int(os.getenv('DATA_UPDATE_HOUR', 9))
+CACHE_DURATION_HOURS = int(os.getenv('CACHE_DURATION_HOURS', 24))
+
+# Configuración de la base de datos SQLite
+DATABASE_PATH = "data/labor_market.db"
+
+# Configuración de Streamlit
+STREAMLIT_CONFIG = {
+    'page_title': "Dashboard Mercado Laboral USA",
+    'page_icon': "📊",
+    'layout': "wide",
+    'initial_sidebar_state': "expanded"
+}
+
+# Colores para las visualizaciones (paleta profesional)
+COLOR_PALETTE = {
+    'primary': '#1f77b4',      # Azul principal
+    'secondary': '#ff7f0e',    # Naranja
+    'success': '#2ca02c',      # Verde
+    'warning': '#d62728',      # Rojo
+    'info': '#9467bd',         # Púrpura
+    'neutral': '#7f7f7f',      # Gris
+    'background': '#f8f9fa',   # Gris claro
+    'text': '#212529'          # Negro texto
+}
+
+# Límites para alertas (thresholds)
+ALERT_THRESHOLDS = {
+    'unemployment_rate_high': 5.0,        # % - Alerta si sube mucho
+    'job_openings_low': 8000000,          # Número - Alerta si baja mucho
+    'quits_rate_low': 2.0,                # % - Confianza del trabajador baja
+    'layoffs_rate_high': 1.5,             # % - Alerta despidos altos
+    'wage_growth_low': 2.5,               # % - Crecimiento salarial bajo
+    'participation_rate_low': 62.0        # % - Participación laboral baja
+}
+
+# Configuración de fechas (últimos N años para análisis)
+YEARS_OF_DATA = 5
+
+# Configuración de la API de FRED
+FRED_API_CONFIG = {
+    'file_type': 'json',
+    'sort_order': 'desc',
+    'limit': 12 * YEARS_OF_DATA,  # Últimos 5 años de datos mensuales
+}
+
+# Configuración de la API de BLS
+BLS_API_CONFIG = {
+    'seriesid': [],  # Se llena dinámicamente
+    'startyear': str(2020),
+    'endyear': str(2025),
+    'registrationkey': BLS_API_KEY if BLS_API_KEY else None
+}
+
+# Textos y labels para la interfaz
+UI_LABELS = {
+    'unemployment_rate': 'Tasa de Desempleo (%)',
+    'job_openings': 'Vacantes de Trabajo (Miles)',
+    'quits_rate': 'Tasa de Renuncias (%)',
+    'layoffs_rate': 'Tasa de Despidos (%)',
+    'labor_force_participation': 'Participación Laboral (%)',
+    'payroll_employment': 'Empleo en Nóminas (Miles)',
+    'avg_hourly_earnings': 'Salario Promedio por Hora ($)',
+    'employment_cost_index': 'Índice de Costo de Empleo',
+    'vacancy_unemployment_ratio': 'Ratio Vacantes/Desempleo'
+}
+
+# Descripciones para cada métrica
+METRIC_DESCRIPTIONS = {
+    'unemployment_rate': 'Porcentaje de la fuerza laboral que está desempleada y buscando trabajo activamente',
+    'job_openings': 'Número total de puestos de trabajo disponibles en el mercado laboral',
+    'quits_rate': 'Porcentaje de trabajadores que renunciaron voluntariamente a sus empleos',
+    'layoffs_rate': 'Porcentaje de trabajadores despedidos por razones económicas',
+    'labor_force_participation': 'Porcentaje de la población en edad de trabajar que está empleada o buscando empleo',
+    'payroll_employment': 'Número total de empleos en nóminas no agrícolas',
+    'avg_hourly_earnings': 'Salario promedio por hora de los trabajadores del sector privado',
+    'employment_cost_index': 'Medida del costo laboral total (salarios + beneficios)',
+    'vacancy_unemployment_ratio': 'Relación entre puestos vacantes y personas desempleadas'
+}
+
+# Calendario de publicaciones de reportes oficiales
+PUBLICATION_CALENDAR = {
+    'employment_situation': {
+        'name': 'Employment Situation Report',
+        'source': 'Bureau of Labor Statistics (BLS)',
+        'frequency': 'Mensual',
+        'timing': 'Primer viernes del mes (para mes anterior)',
+        'time': '8:30 AM ET',
+        'metrics': ['unemployment_rate', 'payroll_employment', 'avg_hourly_earnings', 'labor_force_participation'],
+        'url': 'https://www.bls.gov/news.release/empsit.htm',
+        'schedule_url': 'https://www.bls.gov/schedule/news_release/empsit.htm',
+        'description': 'Reporte principal del mercado laboral con datos de desempleo, empleo en nóminas y salarios',
+        'release_dates_2025': [
+            {'date': '2025-09-06', 'data_for': 'Agosto 2025', 'status': 'scheduled'},
+            {'date': '2025-10-04', 'data_for': 'Septiembre 2025', 'status': 'scheduled'},
+            {'date': '2025-11-01', 'data_for': 'Octubre 2025', 'status': 'scheduled'},
+            {'date': '2025-12-06', 'data_for': 'Noviembre 2025', 'status': 'scheduled'},
+            {'date': '2026-01-10', 'data_for': 'Diciembre 2025', 'status': 'scheduled'}
+        ]
+    },
+    'jolts': {
+        'name': 'Job Openings and Labor Turnover Survey (JOLTS)',
+        'source': 'Bureau of Labor Statistics (BLS)',
+        'frequency': 'Mensual',
+        'timing': '2 meses después del mes de referencia',
+        'time': '10:00 AM ET',
+        'metrics': ['job_openings', 'quits_rate', 'layoffs_rate'],
+        'url': 'https://www.bls.gov/news.release/jolts.htm',
+        'schedule_url': 'https://www.bls.gov/schedule/news_release/jolts.htm',
+        'description': 'Datos de vacantes, renuncias y despidos del mercado laboral',
+        'release_dates_2025': [
+            {'date': '2025-09-03', 'data_for': 'Julio 2025', 'status': 'scheduled'},
+            {'date': '2025-10-01', 'data_for': 'Agosto 2025', 'status': 'scheduled'},
+            {'date': '2025-11-05', 'data_for': 'Septiembre 2025', 'status': 'scheduled'},
+            {'date': '2025-12-03', 'data_for': 'Octubre 2025', 'status': 'scheduled'},
+            {'date': '2026-01-07', 'data_for': 'Noviembre 2025', 'status': 'scheduled'}
+        ]
+    },
+    'employment_cost_index': {
+        'name': 'Employment Cost Index',
+        'source': 'Bureau of Labor Statistics (BLS)',
+        'frequency': 'Trimestral',
+        'timing': 'Último mes del trimestre + 1 mes',
+        'time': '8:30 AM ET',
+        'metrics': ['employment_cost_index'],
+        'url': 'https://www.bls.gov/news.release/eci.htm',
+        'schedule_url': 'https://www.bls.gov/eci/',
+        'description': 'Índice de costo total del empleo (salarios + beneficios)',
+        'release_dates_2025': [
+            {'date': '2025-10-31', 'data_for': 'Q3 2025', 'status': 'scheduled'},
+            {'date': '2026-01-31', 'data_for': 'Q4 2025', 'status': 'scheduled'}
+        ]
+    }
+}
+
+# Información de reportes y enlaces útiles
+REPORT_LINKS = {
+    'bls_main': 'https://www.bls.gov/',
+    'fred_main': 'https://fred.stlouisfed.org/',
+    'employment_situation_current': 'https://www.bls.gov/news.release/empsit.htm',
+    'employment_situation_pdf': 'https://www.bls.gov/news.release/pdf/empsit.pdf',
+    'jolts_current': 'https://www.bls.gov/news.release/jolts.htm',
+    'jolts_pdf': 'https://www.bls.gov/news.release/pdf/jolts.pdf',
+    'economic_calendar_fred': 'https://fred.stlouisfed.org/releases/calendar',
+    'bls_schedule': 'https://www.bls.gov/schedule/'
+}
