@@ -120,7 +120,7 @@ class LaborMarketDataCollector:
                 VALUES 
                 ('db_version', '2.0', 'Versión del esquema de la base de datos'),
                 ('last_full_refresh', '', 'Última actualización completa de datos'),
-                ('data_source_priority', 'API,SAMPLE', 'Prioridad de fuentes de datos'),
+                ('data_source_priority', 'API_ONLY', 'Solo APIs reales, sin datos simulados'),
                 ('auto_populate', 'true', 'Poblar automáticamente datos faltantes')
             ''')
             
@@ -442,50 +442,15 @@ class LaborMarketDataCollector:
         """
         logging.info("Actualizando todos los datos desde APIs...")
         
-        # Poblar con datos de ejemplo si no hay APIs configuradas
-        if (not self.fred_api_key or self.fred_api_key == 'tu_api_key_aqui_requerida') and not self.bls_api_key:
-            logging.warning("APIs no configuradas, poblando con datos de ejemplo")
-            self.populate_sample_data()
-            return
+        # Verificar que las APIs estén configuradas
+        if not self.fred_api_key or self.fred_api_key == 'tu_api_key_aqui_requerida':
+            error_msg = "API key de FRED es requerida para obtener datos reales. Configura FRED_API_KEY en el archivo .env"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
         
         # Obtener datos reales de APIs
         self._fetch_all_api_data()
     
-    def populate_sample_data(self):
-        """
-        Pobla la base de datos con datos de ejemplo realistas para demostración
-        """
-        import numpy as np
-        
-        # Crear fechas mensuales para los últimos 5 años
-        dates = pd.date_range(start='2020-01-01', end='2025-08-01', freq='MS')
-        
-        sample_series = {
-            'UNRATE': 4.5 + 1.5 * np.sin(np.linspace(0, 4*np.pi, len(dates))) + np.random.normal(0, 0.2, len(dates)),
-            'JTSJOL': 10000 + 2000 * np.cos(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 500, len(dates)),
-            'JTSQUR': 3.0 + 0.8 * np.cos(np.linspace(0, 2*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
-            'JTSLDR': 1.4 + 0.3 * np.sin(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
-            'CIVPART': 63.0 + 0.5 * np.cos(np.linspace(0, np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
-            'CES0000000001': 150000 + 5000 * np.linspace(-1, 1, len(dates)) + np.random.normal(0, 1000, len(dates)),
-            'CES0500000003': 30 + 2 * np.linspace(-0.5, 1.5, len(dates)) + np.random.normal(0, 0.5, len(dates)),
-            'CIU2010000000000SA': 100 + 10 * np.linspace(0, 1, len(dates)) + np.random.normal(0, 2, len(dates))
-        }
-        
-        # Aplicar límites realistas
-        sample_series['UNRATE'] = np.clip(sample_series['UNRATE'], 3.0, 6.5)
-        sample_series['JTSJOL'] = np.clip(sample_series['JTSJOL'], 7000, 13000)
-        sample_series['JTSQUR'] = np.clip(sample_series['JTSQUR'], 1.8, 4.2)
-        sample_series['JTSLDR'] = np.clip(sample_series['JTSLDR'], 1.0, 2.0)
-        
-        # Guardar en base de datos
-        for series_id, values in sample_series.items():
-            df = pd.DataFrame({
-                'date': dates,
-                'value': values
-            })
-            self.save_to_cache(series_id, df, 'SAMPLE')
-        
-        logging.info("Datos de ejemplo poblados correctamente en SQLite")
     
     def _fetch_all_api_data(self):
         """

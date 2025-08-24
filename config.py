@@ -72,40 +72,21 @@ STREAMLIT_CONFIG = {
     'initial_sidebar_state': "expanded"
 }
 
-# Paletas de colores para temas claro y oscuro
-COLOR_PALETTES = {
-    'light': {
-        'primary': '#1f77b4',      # Azul principal
-        'secondary': '#ff7f0e',    # Naranja
-        'success': '#2ca02c',      # Verde
-        'warning': '#d62728',      # Rojo
-        'info': '#9467bd',         # Púrpura
-        'neutral': '#7f7f7f',      # Gris
-        'background': '#f8f9fa',   # Gris claro
-        'text': '#212529',         # Negro texto
-        'card_bg': '#ffffff',      # Fondo tarjetas
-        'border': '#dee2e6',       # Bordes
-        'sidebar_bg': '#f8f9fa',   # Fondo sidebar
-        'chart_bg': 'rgba(0,0,0,0)' # Fondo gráficos
-    },
-    'dark': {
-        'primary': '#4dabf7',      # Azul más claro
-        'secondary': '#ffa94d',    # Naranja más suave
-        'success': '#51cf66',      # Verde más brillante
-        'warning': '#ff6b6b',      # Rojo más suave
-        'info': '#b197fc',         # Púrpura más claro
-        'neutral': '#adb5bd',      # Gris más claro
-        'background': '#1a1a1a',   # Fondo principal oscuro
-        'text': '#e9ecef',         # Texto claro
-        'card_bg': '#2d2d30',      # Fondo tarjetas oscuro
-        'border': '#495057',       # Bordes oscuros
-        'sidebar_bg': '#212529',   # Fondo sidebar oscuro
-        'chart_bg': 'rgba(0,0,0,0)' # Fondo gráficos
-    }
+# Paleta de colores tema oscuro único
+COLOR_PALETTE = {
+    'primary': '#4dabf7',      # Azul más claro
+    'secondary': '#ffa94d',    # Naranja más suave
+    'success': '#51cf66',      # Verde más brillante
+    'warning': '#ff6b6b',      # Rojo más suave
+    'info': '#b197fc',         # Púrpura más claro
+    'neutral': '#adb5bd',      # Gris más claro
+    'background': '#1a1a1a',   # Fondo principal oscuro
+    'text': '#e9ecef',         # Texto claro
+    'card_bg': '#2d2d30',      # Fondo tarjetas oscuro
+    'border': '#495057',       # Bordes oscuros
+    'sidebar_bg': '#212529',   # Fondo sidebar oscuro
+    'chart_bg': 'rgba(0,0,0,0)' # Fondo gráficos
 }
-
-# Paleta por defecto (retrocompatibilidad)
-COLOR_PALETTE = COLOR_PALETTES['light']
 
 # Límites para alertas (thresholds)
 ALERT_THRESHOLDS = {
@@ -146,6 +127,90 @@ UI_LABELS = {
     'avg_hourly_earnings': 'Salario Promedio por Hora ($)',
     'employment_cost_index': 'Índice de Costo de Empleo',
     'vacancy_unemployment_ratio': 'Ratio Vacantes/Desempleo'
+}
+
+# Organización por categorías del dashboard
+DASHBOARD_CATEGORIES = {
+    'condiciones_generales': {
+        'title': '📊 Condiciones Generales del Empleo',
+        'description': 'Métricas fundamentales del estado del empleo',
+        'metrics': [
+            'unemployment_rate',
+            'payroll_employment', 
+            'labor_force_participation',
+            'job_openings'  # Como proxy de crecimiento fuerza laboral
+        ],
+        'color': '#4dabf7'  # Azul principal
+    },
+    'dinamica_mercado': {
+        'title': '🔄 Dinámica del Mercado Laboral',
+        'description': 'Flujos y movimientos en el mercado de trabajo',
+        'metrics': [
+            'quits_rate',
+            'layoffs_rate',
+            'vacancy_unemployment_ratio'
+        ],
+        'color': '#ffa94d'  # Naranja
+    },
+    'salarios_inflacion': {
+        'title': '💰 Salarios e Inflación',
+        'description': 'Aspectos económicos y compensación laboral',
+        'metrics': [
+            'avg_hourly_earnings',
+            'employment_cost_index'
+        ],
+        'color': '#51cf66'  # Verde
+    }
+}
+
+# Configuración de filtros temporales
+FILTER_PRESETS = {
+    'ultimo_ano': {
+        'name': '📅 Último Año',
+        'description': 'Últimos 12 meses de datos',
+        'months': 12
+    },
+    'ultimos_6_meses': {
+        'name': '📆 Últimos 6 Meses', 
+        'description': 'Últimos 6 meses de datos',
+        'months': 6
+    },
+    'ano_2024': {
+        'name': '🗓️ Año 2024',
+        'description': 'Todo el año 2024',
+        'year': 2024
+    },
+    'ano_2023': {
+        'name': '🗓️ Año 2023',
+        'description': 'Todo el año 2023', 
+        'year': 2023
+    },
+    'pre_covid': {
+        'name': '🕰️ Pre-COVID',
+        'description': 'Enero 2020 - Febrero 2020',
+        'start_date': '2020-01-01',
+        'end_date': '2020-02-29'
+    },
+    'covid_periodo': {
+        'name': '🦠 Período COVID',
+        'description': 'Marzo 2020 - Diciembre 2021',
+        'start_date': '2020-03-01',
+        'end_date': '2021-12-31'
+    },
+    'post_covid': {
+        'name': '📈 Post-COVID',
+        'description': 'Enero 2022 - Presente',
+        'start_date': '2022-01-01',
+        'end_date': None  # None = hasta la fecha más reciente
+    }
+}
+
+# Opciones de filtros temporales
+FILTER_TYPES = {
+    'preset': 'Períodos Predefinidos',
+    'years': 'Por Años Específicos',  
+    'months': 'Rango de Meses',
+    'custom': 'Rango Personalizado'
 }
 
 # Descripciones para cada métrica
