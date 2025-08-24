@@ -35,8 +35,39 @@
 
 El dashboard está funcionando y ejecutándose en http://localhost:8501
 
+## 🔄 **ACTUALIZACIÓN ARQUITECTURA COMPLETADA** - 2025-08-23
+
+### ✅ Cambios Implementados
+- **ELIMINADO**: Sistema de datos mock/simulados del dashboard
+- **IMPLEMENTADO**: SQLite como única fuente de datos permanente
+- **MEJORADO**: Esquema de base de datos con auditoría y metadatos
+- **ACTUALIZADO**: Dashboard para usar exclusivamente SQLite
+- **REFACTORIZADO**: Scripts de testing para nueva arquitectura
+
+### 🎯 **Nueva Arquitectura de Datos**
+1. **SQLite como fuente principal**: No más opción de datos mock
+2. **Auto-población inteligente**: Si no hay datos, se puebla automáticamente
+3. **Fallback a datos de ejemplo**: Si APIs no están configuradas, usa datos realistas
+4. **Esquema mejorado**: Tablas de auditoría, logs, y configuración
+5. **Rendimiento optimizado**: Índices y queries eficientes
+
+## 🌙 **NUEVA FUNCIONALIDAD: Tema Oscuro** - 2025-08-23 20:15
+
+### ✅ Características Implementadas
+- **🎨 Selector de tema dinámico**: Toggle 🌞 Claro / 🌙 Oscuro en sidebar
+- **📊 Gráficos adaptativos**: Plotly con plantillas dark/light automáticas
+- **🎯 CSS personalizado**: Estilos que se actualizan instantáneamente
+- **🌈 Paletas optimizadas**: Colores cuidadosamente seleccionados para ambos temas
+- **♿ Accesibilidad mejorada**: Contraste optimizado para reducir fatiga ocular
+
+### 🔧 Implementación Técnica
+- **Paletas duales**: `COLOR_PALETTES['light']` y `COLOR_PALETTES['dark']`
+- **Funciones dinámicas**: CSS y colores se aplican según selección
+- **Gráficos inteligentes**: Plotly templates cambian automáticamente
+- **Sin recarga**: Cambio instantáneo de tema
+
 ## 🎯 **Próximos Pasos Opcionales**
-- Configurar API key de FRED para datos en vivo (.env file)
+- Configurar API key de FRED para datos reales (.env file)
 - Configurar API key de BLS para límites más altos (opcional)
 - Programar actualización automática de datos
 

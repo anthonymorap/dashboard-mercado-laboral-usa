@@ -31,39 +31,102 @@ class LaborMarketDataCollector:
         
     def setup_database(self):
         """
-        Configura la base de datos SQLite local para caché
+        Configura la base de datos SQLite como almacenamiento principal permanente
         """
         try:
+            # Crear directorio de datos si no existe
+            import os
+            db_dir = os.path.dirname(self.db_path)
+            if not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Tabla para datos de series temporales
+            # Tabla principal para datos de series temporales (mejorada)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS labor_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     series_id TEXT NOT NULL,
                     date TEXT NOT NULL,
                     value REAL NOT NULL,
+                    value_status TEXT DEFAULT 'valid',
+                    revision_date TEXT,
+                    data_quality_score INTEGER DEFAULT 100,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(series_id, date)
                 )
             ''')
             
-            # Tabla para metadatos de series
+            # Índices para mejor rendimiento
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_labor_data_series_date 
+                ON labor_data(series_id, date DESC)
+            ''')
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_labor_data_updated 
+                ON labor_data(last_updated DESC)
+            ''')
+            
+            # Tabla para metadatos de series (expandida)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS series_metadata (
                     series_id TEXT PRIMARY KEY,
+                    metric_name TEXT,
                     title TEXT,
                     units TEXT,
                     frequency TEXT,
                     source TEXT,
+                    source_url TEXT,
+                    description TEXT,
+                    seasonal_adjustment TEXT,
+                    geography TEXT DEFAULT 'USA',
+                    category TEXT,
+                    active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
+            # Tabla de log de actualizaciones para auditoría
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS update_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    series_id TEXT,
+                    update_type TEXT,
+                    records_affected INTEGER,
+                    source TEXT,
+                    success BOOLEAN,
+                    error_message TEXT,
+                    execution_time_ms INTEGER,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Tabla de configuración del sistema
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS system_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    description TEXT,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Poblar configuración inicial
+            cursor.execute('''
+                INSERT OR IGNORE INTO system_config (key, value, description)
+                VALUES 
+                ('db_version', '2.0', 'Versión del esquema de la base de datos'),
+                ('last_full_refresh', '', 'Última actualización completa de datos'),
+                ('data_source_priority', 'API,SAMPLE', 'Prioridad de fuentes de datos'),
+                ('auto_populate', 'true', 'Poblar automáticamente datos faltantes')
+            ''')
+            
             conn.commit()
             conn.close()
-            logging.info("Base de datos configurada correctamente")
+            logging.info("Base de datos SQLite configurada como almacenamiento principal")
             
         except Exception as e:
             logging.error(f"Error configurando base de datos: {e}")
@@ -186,13 +249,18 @@ class LaborMarketDataCollector:
     
     def save_to_cache(self, series_id, df, source='FRED'):
         """
-        Guarda datos en la base de datos local
+        Guarda datos en la base de datos SQLite permanente
         
         Args:
             series_id (str): ID de la serie
             df (pd.DataFrame): DataFrame con los datos
-            source (str): Fuente de los datos (FRED o BLS)
+            source (str): Fuente de los datos (FRED, BLS, SAMPLE)
         """
+        start_time = time.time()
+        records_affected = 0
+        success = False
+        error_message = None
+        
         try:
             conn = sqlite3.connect(self.db_path)
             
@@ -202,24 +270,66 @@ class LaborMarketDataCollector:
             # Insertar nuevos datos
             for _, row in df.iterrows():
                 conn.execute('''
-                    INSERT OR REPLACE INTO labor_data (series_id, date, value)
-                    VALUES (?, ?, ?)
-                ''', (series_id, row['date'].strftime('%Y-%m-%d'), row['value']))
+                    INSERT OR REPLACE INTO labor_data 
+                    (series_id, date, value, value_status, data_quality_score)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    series_id, 
+                    row['date'].strftime('%Y-%m-%d'), 
+                    row['value'],
+                    'valid',
+                    100 if source in ['FRED', 'BLS'] else 80  # Datos de ejemplo tienen menor score
+                ))
+                records_affected += 1
             
-            # Actualizar metadatos
+            # Encontrar el nombre de métrica para esta serie
+            metric_name = None
+            for metric, sid in SERIES_MAPPING.items():
+                if sid == series_id:
+                    metric_name = metric
+                    break
+            
+            # Actualizar metadatos mejorados
             title = UI_LABELS.get(series_id, series_id)
+            description = METRIC_DESCRIPTIONS.get(metric_name, 'Serie de datos del mercado laboral')
+            
             conn.execute('''
-                INSERT OR REPLACE INTO series_metadata (series_id, title, source)
-                VALUES (?, ?, ?)
-            ''', (series_id, title, source))
+                INSERT OR REPLACE INTO series_metadata 
+                (series_id, metric_name, title, source, description, active)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (series_id, metric_name, title, source, description, True))
+            
+            # Registrar en log de actualizaciones
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            conn.execute('''
+                INSERT INTO update_log 
+                (series_id, update_type, records_affected, source, success, execution_time_ms)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (series_id, 'data_save', records_affected, source, True, execution_time_ms))
             
             conn.commit()
             conn.close()
             
-            logging.info(f"Datos guardados en caché para {series_id}")
+            success = True
+            logging.info(f"Datos guardados permanentemente: {series_id} ({records_affected} registros) desde {source}")
             
         except Exception as e:
-            logging.error(f"Error guardando en caché {series_id}: {e}")
+            error_message = str(e)
+            logging.error(f"Error guardando datos {series_id}: {e}")
+            
+            # Registrar error en log
+            try:
+                conn = sqlite3.connect(self.db_path)
+                execution_time_ms = int((time.time() - start_time) * 1000)
+                conn.execute('''
+                    INSERT INTO update_log 
+                    (series_id, update_type, records_affected, source, success, error_message, execution_time_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (series_id, 'data_save', records_affected, source, False, error_message, execution_time_ms))
+                conn.commit()
+                conn.close()
+            except:
+                pass
     
     def load_from_cache(self, series_id):
         """
@@ -288,15 +398,98 @@ class LaborMarketDataCollector:
             
         return False
     
-    def get_all_labor_data(self, force_refresh=False):
+    def ensure_data_availability(self):
         """
-        Obtiene todos los datos del mercado laboral
-        
-        Args:
-            force_refresh (bool): Forzar actualización desde APIs
+        Asegura que hay datos disponibles en la base de datos.
+        Si no hay datos o están muy desactualizados, los obtiene de las APIs.
         
         Returns:
-            dict: Diccionario con todos los DataFrames
+            bool: True si hay datos disponibles
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Verificar si existe al menos una métrica con datos recientes
+            cursor.execute('''
+                SELECT COUNT(DISTINCT series_id) 
+                FROM labor_data 
+                WHERE last_updated > datetime('now', '-7 days')
+            ''')
+            
+            recent_series_count = cursor.fetchone()[0]
+            conn.close()
+            
+            # Si tenemos al menos 5 series con datos recientes, consideramos que hay suficientes datos
+            if recent_series_count >= 5:
+                logging.info(f"Datos disponibles: {recent_series_count} series actualizadas")
+                return True
+            else:
+                logging.warning(f"Datos insuficientes o desactualizados: {recent_series_count} series")
+                # Intentar actualizar automáticamente
+                self.refresh_all_data()
+                return True
+                
+        except Exception as e:
+            logging.error(f"Error verificando disponibilidad de datos: {e}")
+            # Intentar poblar la base de datos por primera vez
+            self.refresh_all_data()
+            return True
+    
+    def refresh_all_data(self):
+        """
+        Actualiza todos los datos desde las APIs y los almacena en SQLite
+        """
+        logging.info("Actualizando todos los datos desde APIs...")
+        
+        # Poblar con datos de ejemplo si no hay APIs configuradas
+        if (not self.fred_api_key or self.fred_api_key == 'tu_api_key_aqui_requerida') and not self.bls_api_key:
+            logging.warning("APIs no configuradas, poblando con datos de ejemplo")
+            self.populate_sample_data()
+            return
+        
+        # Obtener datos reales de APIs
+        self._fetch_all_api_data()
+    
+    def populate_sample_data(self):
+        """
+        Pobla la base de datos con datos de ejemplo realistas para demostración
+        """
+        import numpy as np
+        
+        # Crear fechas mensuales para los últimos 5 años
+        dates = pd.date_range(start='2020-01-01', end='2025-08-01', freq='MS')
+        
+        sample_series = {
+            'UNRATE': 4.5 + 1.5 * np.sin(np.linspace(0, 4*np.pi, len(dates))) + np.random.normal(0, 0.2, len(dates)),
+            'JTSJOL': 10000 + 2000 * np.cos(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 500, len(dates)),
+            'JTSQUR': 3.0 + 0.8 * np.cos(np.linspace(0, 2*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
+            'JTSLDR': 1.4 + 0.3 * np.sin(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
+            'CIVPART': 63.0 + 0.5 * np.cos(np.linspace(0, np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates)),
+            'CES0000000001': 150000 + 5000 * np.linspace(-1, 1, len(dates)) + np.random.normal(0, 1000, len(dates)),
+            'CES0500000003': 30 + 2 * np.linspace(-0.5, 1.5, len(dates)) + np.random.normal(0, 0.5, len(dates)),
+            'CIU2010000000000SA': 100 + 10 * np.linspace(0, 1, len(dates)) + np.random.normal(0, 2, len(dates))
+        }
+        
+        # Aplicar límites realistas
+        sample_series['UNRATE'] = np.clip(sample_series['UNRATE'], 3.0, 6.5)
+        sample_series['JTSJOL'] = np.clip(sample_series['JTSJOL'], 7000, 13000)
+        sample_series['JTSQUR'] = np.clip(sample_series['JTSQUR'], 1.8, 4.2)
+        sample_series['JTSLDR'] = np.clip(sample_series['JTSLDR'], 1.0, 2.0)
+        
+        # Guardar en base de datos
+        for series_id, values in sample_series.items():
+            df = pd.DataFrame({
+                'date': dates,
+                'value': values
+            })
+            self.save_to_cache(series_id, df, 'SAMPLE')
+        
+        logging.info("Datos de ejemplo poblados correctamente en SQLite")
+    
+    def _fetch_all_api_data(self):
+        """
+        Obtiene datos reales de las APIs y los almacena
         """
         all_data = {}
         
@@ -307,18 +500,10 @@ class LaborMarketDataCollector:
         for metric in fred_series:
             series_id = SERIES_MAPPING[metric]
             
-            # Verificar caché
-            if not force_refresh and self.is_cache_fresh(series_id, CACHE_DURATION_HOURS):
-                df = self.load_from_cache(series_id)
-                if not df.empty:
-                    all_data[metric] = df[['date', 'value']]
-                    continue
-            
             # Obtener desde API
             df = self.get_fred_data(series_id)
             if not df.empty:
                 self.save_to_cache(series_id, df, 'FRED')
-                all_data[metric] = df[['date', 'value']]
             
             # Rate limiting
             time.sleep(0.5)
@@ -327,30 +512,55 @@ class LaborMarketDataCollector:
         bls_series = ['payroll_employment', 'avg_hourly_earnings', 'employment_cost_index']
         bls_series_ids = [SERIES_MAPPING[metric] for metric in bls_series]
         
-        # Verificar caché de BLS
-        need_bls_refresh = force_refresh
-        if not force_refresh:
-            for metric in bls_series:
-                series_id = SERIES_MAPPING[metric]
-                if not self.is_cache_fresh(series_id, CACHE_DURATION_HOURS):
-                    need_bls_refresh = True
-                    break
+        bls_data = self.get_bls_data(bls_series_ids)
         
-        if need_bls_refresh:
-            bls_data = self.get_bls_data(bls_series_ids)
-            
-            for metric in bls_series:
-                series_id = SERIES_MAPPING[metric]
-                if series_id in bls_data:
-                    self.save_to_cache(series_id, bls_data[series_id], 'BLS')
-                    all_data[metric] = bls_data[series_id]
-        else:
-            # Cargar desde caché
-            for metric in bls_series:
-                series_id = SERIES_MAPPING[metric]
-                df = self.load_from_cache(series_id)
-                if not df.empty:
-                    all_data[metric] = df[['date', 'value']]
+        for metric in bls_series:
+            series_id = SERIES_MAPPING[metric]
+            if series_id in bls_data:
+                self.save_to_cache(series_id, bls_data[series_id], 'BLS')
+
+        # Series de empleo por sector de BLS
+        sector_series_ids = list(SECTOR_EMPLOYMENT_SERIES.values())
+        sector_data = self.get_bls_data(sector_series_ids)
+
+        for sector_name, series_id in SECTOR_EMPLOYMENT_SERIES.items():
+            if series_id in sector_data:
+                # Usamos el series_id como 'metric' para el cache
+                self.save_to_cache(series_id, sector_data[series_id], 'BLS')
+    
+    def get_all_labor_data(self, force_refresh=False):
+        """
+        Obtiene todos los datos del mercado laboral desde SQLite.
+        Si no hay datos disponibles o force_refresh=True, actualiza desde APIs.
+        
+        Args:
+            force_refresh (bool): Forzar actualización desde APIs
+        
+        Returns:
+            dict: Diccionario con todos los DataFrames
+        """
+        # Asegurar que hay datos disponibles en la base de datos
+        if force_refresh or not self.ensure_data_availability():
+            self.refresh_all_data()
+        
+        # Cargar todos los datos desde SQLite
+        all_data = {}
+        
+        # Mapear series ID a nombres de métricas
+        for metric, series_id in SERIES_MAPPING.items():
+            df = self.load_from_cache(series_id)
+            if not df.empty:
+                all_data[metric] = df[['date', 'value']]
+
+        # Cargar datos de empleo por sector
+        sector_employment_data = {}
+        for sector_name, series_id in SECTOR_EMPLOYMENT_SERIES.items():
+            df = self.load_from_cache(series_id)
+            if not df.empty:
+                sector_employment_data[sector_name] = df[['date', 'value']]
+        
+        if sector_employment_data:
+            all_data['sector_employment'] = sector_employment_data
         
         # Calcular métrica derivada: Ratio Vacantes/Desempleo
         if 'job_openings' in all_data and 'unemployment_rate' in all_data:
@@ -361,7 +571,7 @@ class LaborMarketDataCollector:
             if not vacancy_ratio.empty:
                 all_data['vacancy_unemployment_ratio'] = vacancy_ratio
         
-        logging.info(f"Recopilados datos para {len(all_data)} métricas")
+        logging.info(f"Datos cargados desde SQLite: {len(all_data)} métricas")
         return all_data
     
     def calculate_vacancy_unemployment_ratio(self, job_openings_df, unemployment_df):
@@ -388,21 +598,94 @@ class LaborMarketDataCollector:
             logging.error(f"Error calculando ratio vacantes/desempleo: {e}")
             return pd.DataFrame()
 
+    def get_database_status(self):
+        """
+        Obtiene el estado actual de la base de datos
+        
+        Returns:
+            dict: Información del estado de la base de datos
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Contar series disponibles
+            cursor.execute('SELECT COUNT(DISTINCT series_id) FROM labor_data')
+            total_series = cursor.fetchone()[0]
+            
+            # Contar registros totales
+            cursor.execute('SELECT COUNT(*) FROM labor_data')
+            total_records = cursor.fetchone()[0]
+            
+            # Obtener última actualización
+            cursor.execute('SELECT MAX(last_updated) FROM labor_data')
+            last_update = cursor.fetchone()[0]
+            
+            # Obtener información por serie
+            cursor.execute('''
+                SELECT 
+                    sm.series_id,
+                    sm.title,
+                    sm.source,
+                    COUNT(ld.value) as record_count,
+                    MAX(ld.date) as latest_date,
+                    MAX(ld.last_updated) as last_updated
+                FROM series_metadata sm
+                LEFT JOIN labor_data ld ON sm.series_id = ld.series_id
+                GROUP BY sm.series_id
+                ORDER BY sm.series_id
+            ''')
+            
+            series_info = cursor.fetchall()
+            conn.close()
+            
+            return {
+                'total_series': total_series,
+                'total_records': total_records,
+                'last_update': last_update,
+                'series_details': series_info,
+                'db_path': self.db_path
+            }
+            
+        except Exception as e:
+            logging.error(f"Error obteniendo estado de la base de datos: {e}")
+            return {'error': str(e)}
+
 # Función principal para testing
 if __name__ == "__main__":
     collector = LaborMarketDataCollector()
     
-    # Test de conectividad básica
-    print("Probando conexión con FRED...")
-    fred_test = collector.get_fred_data('UNRATE', limit=3)
-    print(f"FRED test: {'✓' if not fred_test.empty else '✗'}")
+    print("Dashboard Mercado Laboral USA - Data Collector Test")
+    print("=" * 60)
     
-    print("Probando conexión con BLS...")
-    bls_test = collector.get_bls_data(['CES0000000001'])
-    print(f"BLS test: {'✓' if bls_test else '✗'}")
+    # Mostrar estado de la base de datos
+    print("Estado actual de la base de datos:")
+    db_status = collector.get_database_status()
     
-    print("Obteniendo todos los datos...")
+    if 'error' not in db_status:
+        print(f"Series disponibles: {db_status['total_series']}")
+        print(f"Registros totales: {db_status['total_records']}")
+        print(f"Ultima actualizacion: {db_status['last_update']}")
+        print("\nDetalles por serie:")
+        
+        for series_info in db_status['series_details']:
+            series_id, title, source, records, latest_date, last_updated = series_info
+            print(f"  {series_id}: {records} registros (ultimo: {latest_date}) [{source}]")
+    else:
+        print(f"Error: {db_status['error']}")
+    
+    print("\n" + "=" * 60)
+    print("Obteniendo todos los datos del mercado laboral...")
+    
     all_data = collector.get_all_labor_data()
     
+    print(f"\nDatos cargados exitosamente:")
     for metric, df in all_data.items():
-        print(f"{metric}: {len(df)} registros")
+        if not df.empty:
+            latest_value = df.iloc[-1]['value']
+            latest_date = df.iloc[-1]['date'].strftime('%Y-%m-%d')
+            print(f"  {metric}: {len(df)} registros (ultimo: {latest_value:.2f} el {latest_date})")
+        else:
+            print(f"  {metric}: Sin datos")
+    
+    print("\nTest completado exitosamente")

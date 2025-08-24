@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 import sys
 import os
@@ -27,144 +26,270 @@ st.set_page_config(
     initial_sidebar_state=STREAMLIT_CONFIG['initial_sidebar_state']
 )
 
-# CSS personalizado para mejorar el aspecto
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 3rem;
-        font-weight: bold;
-        text-align: center;
-        color: #1f77b4;
-        margin-bottom: 2rem;
-    }
-    .metric-container {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-        margin: 0.5rem 0;
-    }
-    .alert-high {
-        background-color: #f8d7da;
-        border-left-color: #dc3545;
-    }
-    .alert-warning {
-        background-color: #fff3cd;
-        border-left-color: #ffc107;
-    }
-    .alert-good {
-        background-color: #d1edff;
-        border-left-color: #0dcaf0;
-    }
-</style>
-""", unsafe_allow_html=True)
+def get_theme_colors(theme_mode='light'):
+    """
+    Obtiene la paleta de colores según el tema seleccionado
+    """
+    return COLOR_PALETTES.get(theme_mode, COLOR_PALETTES['light'])
+
+def apply_custom_css(theme_mode='light'):
+    """
+    Aplica CSS personalizado según el tema seleccionado
+    """
+    colors = get_theme_colors(theme_mode)
+    
+    css = f"""
+    <style>
+        /* Estilos base del tema */
+        .stApp {{
+            background-color: {colors['background']};
+            color: {colors['text']};
+        }}
+        
+        /* Header principal */
+        .main-header {{
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            color: {colors['primary']};
+            margin-bottom: 2rem;
+        }}
+        
+        /* Contenedores de métricas */
+        .metric-container {{
+            background-color: {colors['card_bg']};
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid {colors['primary']};
+            margin: 0.5rem 0;
+            border: 1px solid {colors['border']};
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        
+        /* Alertas */
+        .alert-high {{
+            background-color: {colors['warning']}20;
+            border-left-color: {colors['warning']};
+        }}
+        .alert-warning {{
+            background-color: {colors['secondary']}20;
+            border-left-color: {colors['secondary']};
+        }}
+        .alert-good {{
+            background-color: {colors['info']}20;
+            border-left-color: {colors['info']};
+        }}
+        
+        /* Sidebar personalizado */
+        .css-1d391kg {{
+            background-color: {colors['sidebar_bg']};
+        }}
+        
+        /* Texto de métricas */
+        .metric-container h1, .metric-container h3 {{
+            color: {colors['text']};
+        }}
+        
+        /* Toggle de tema */
+        .theme-toggle {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background-color: {colors['card_bg']};
+            border-radius: 8px;
+            border: 1px solid {colors['border']};
+            margin: 10px 0;
+        }}
+        
+        /* Contenido de pestañas */
+        .stTabs [data-baseweb="tab-list"] {{
+            background-color: {colors['card_bg']};
+        }}
+        
+        /* Texto general mejorado */
+        .markdown-text-container {{
+            color: {colors['text']};
+        }}
+        
+        /* Datos de tablas */
+        .dataframe {{
+            background-color: {colors['card_bg']};
+            color: {colors['text']};
+        }}
+    </style>
+    """
+    
+    st.markdown(css, unsafe_allow_html=True)
+
+def get_plotly_template(theme_mode='light'):
+    """
+    Obtiene la plantilla de Plotly según el tema
+    """
+    if theme_mode == 'dark':
+        return 'plotly_dark'
+    else:
+        return 'plotly_white'
+
+def get_theme_chart_colors(theme_mode='light'):
+    """
+    Obtiene los colores para gráficos según el tema
+    """
+    colors = get_theme_colors(theme_mode)
+    if theme_mode == 'dark':
+        return {
+            'bg_color': 'rgba(45, 45, 48, 0.8)',
+            'paper_bgcolor': colors['card_bg'],
+            'plot_bgcolor': colors['chart_bg'],
+            'text_color': colors['text'],
+            'grid_color': 'rgba(255,255,255,0.1)'
+        }
+    else:
+        return {
+            'bg_color': 'rgba(255, 255, 255, 0.8)',
+            'paper_bgcolor': colors['card_bg'],
+            'plot_bgcolor': colors['chart_bg'],
+            'text_color': colors['text'],
+            'grid_color': 'rgba(128,128,128,0.2)'
+        }
 
 @st.cache_data(ttl=3600)  # Cache por 1 hora
-def load_labor_data():
+def load_labor_data(force_refresh=False):
     """
-    Carga los datos del mercado laboral con caché
+    Carga los datos del mercado laboral desde SQLite (fuente única)
+    
+    Args:
+        force_refresh (bool): Forzar actualización desde APIs
+    
+    Returns:
+        dict: Diccionario con todos los DataFrames del mercado laboral
     """
     collector = LaborMarketDataCollector()
-    return collector.get_all_labor_data()
+    return collector.get_all_labor_data(force_refresh=force_refresh)
 
-@st.cache_data
-def generate_sample_data():
+def get_database_status():
     """
-    Genera datos de muestra para demostración cuando las APIs no están disponibles
+    Obtiene el estado actual de la base de datos SQLite
+    
+    Returns:
+        dict: Información del estado de la base de datos
     """
-    # Crear fechas mensuales para los últimos 5 años
-    dates = pd.date_range(start='2020-01-01', end='2025-08-01', freq='MS')
-    
-    sample_data = {}
-    
-    # Tasa de desempleo (3-6%)
-    unemployment_trend = 4.5 + 1.5 * np.sin(np.linspace(0, 4*np.pi, len(dates))) + np.random.normal(0, 0.2, len(dates))
-    unemployment_trend = np.clip(unemployment_trend, 3.0, 6.5)
-    sample_data['unemployment_rate'] = pd.DataFrame({
-        'date': dates,
-        'value': unemployment_trend
-    })
-    
-    # Vacantes de trabajo (8-12 millones)
-    job_openings_trend = 10000 + 2000 * np.cos(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 500, len(dates))
-    job_openings_trend = np.clip(job_openings_trend, 7000, 13000)
-    sample_data['job_openings'] = pd.DataFrame({
-        'date': dates,
-        'value': job_openings_trend
-    })
-    
-    # Tasa de renuncias (2-4%)
-    quits_trend = 3.0 + 0.8 * np.cos(np.linspace(0, 2*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates))
-    quits_trend = np.clip(quits_trend, 1.8, 4.2)
-    sample_data['quits_rate'] = pd.DataFrame({
-        'date': dates,
-        'value': quits_trend
-    })
-    
-    # Tasa de despidos (1-2%)
-    layoffs_trend = 1.4 + 0.3 * np.sin(np.linspace(0, 3*np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates))
-    layoffs_trend = np.clip(layoffs_trend, 1.0, 2.0)
-    sample_data['layoffs_rate'] = pd.DataFrame({
-        'date': dates,
-        'value': layoffs_trend
-    })
-    
-    # Participación laboral (62-64%)
-    participation_trend = 63.0 + 0.5 * np.cos(np.linspace(0, np.pi, len(dates))) + np.random.normal(0, 0.1, len(dates))
-    sample_data['labor_force_participation'] = pd.DataFrame({
-        'date': dates,
-        'value': participation_trend
-    })
-    
-    # Empleo en nóminas (140-155 millones)
-    payroll_trend = 150000 + 5000 * np.linspace(-1, 1, len(dates)) + np.random.normal(0, 1000, len(dates))
-    sample_data['payroll_employment'] = pd.DataFrame({
-        'date': dates,
-        'value': payroll_trend
-    })
-    
-    # Salario promedio por hora ($25-35)
-    wage_trend = 30 + 2 * np.linspace(-0.5, 1.5, len(dates)) + np.random.normal(0, 0.5, len(dates))
-    sample_data['avg_hourly_earnings'] = pd.DataFrame({
-        'date': dates,
-        'value': wage_trend
-    })
-    
-    # Ratio vacantes/desempleo
-    if 'job_openings' in sample_data and 'unemployment_rate' in sample_data:
-        ratio_values = (sample_data['job_openings']['value'] / 1000) / sample_data['unemployment_rate']['value']
-        sample_data['vacancy_unemployment_ratio'] = pd.DataFrame({
-            'date': dates,
-            'value': ratio_values
-        })
-    
-    return sample_data
+    collector = LaborMarketDataCollector()
+    return collector.get_database_status()
 
-def create_kpi_card(title, value, delta=None, delta_color="normal"):
+def create_bullet_chart(title, value, previous_value, theme_mode='light'):
     """
-    Crea una tarjeta KPI personalizada
+    Crea un gráfico de tipo bullet chart para un KPI.
     """
-    if delta is not None:
-        delta_str = f"**{delta:+.1f}%** desde el mes anterior"
-        delta_color_map = {"normal": "🔵", "good": "🟢", "bad": "🔴"}
-        color_icon = delta_color_map.get(delta_color, "🔵")
-    else:
-        delta_str = ""
-        color_icon = ""
+    theme_colors = get_theme_colors(theme_mode)
     
-    st.markdown(f"""
-    <div class="metric-container">
-        <h3>{title}</h3>
-        <h1>{value}</h1>
-        <p>{color_icon} {delta_str}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number+delta",
+        value = value,
+        delta = {'reference': previous_value, 'relative': False, 'valueformat': '.2f'},
+        title = {'text': title, 'font': {'size': 16, 'color': theme_colors['text']}},
+        gauge = {
+            'axis': {'range': [None, max(value, previous_value) * 1.2)], 'visible': False},
+            'bar': {'color': theme_colors['primary'], 'thickness': 0.7},
+            'steps': [
+                {'range': [0, previous_value * 0.8], 'color': theme_colors['warning']},
+                {'range': [previous_value * 0.8, previous_value * 1.2], 'color': theme_colors['secondary']},
+                {'range': [previous_value * 1.2, max(value, previous_value) * 1.5], 'color': theme_colors['success']}
+            ],
+            'threshold': {
+                'line': {'color': theme_colors['text'], 'width': 3},
+                'thickness': 0.9,
+                'value': previous_value
+            }
+        },
+        number={'font': {'color': theme_colors['text'], 'size': 36}},
+        domain = {'x': [0, 1], 'y': [0, 1]}
+    ))
+    
+    fig.update_layout(
+        height=150,
+        paper_bgcolor=theme_colors['card_bg'],
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
 
-def create_trend_chart(data, title, y_title, color=COLOR_PALETTE['primary']):
+def create_sparkline_chart(data, theme_mode='light'):
+    """
+    Crea un pequeño gráfico de tendencia (sparkline).
+    """
+    theme_colors = get_theme_colors(theme_mode)
+    
+    fig = go.Figure(go.Scatter(
+        x=data['date'],
+        y=data['value'],
+        mode='lines',
+        line=dict(color=theme_colors['primary'], width=2),
+        fill='tozeroy',
+        fillcolor=f'{theme_colors["primary"]}33' # Add transparency
+    ))
+    
+    fig.update_layout(
+        height=150,
+        showlegend=False,
+        paper_bgcolor=theme_colors['card_bg'],
+        plot_bgcolor=theme_colors['card_bg'],
+        margin=dict(l=0, r=0, t=0, b=0),
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False)
+    )
+    return fig
+
+def create_sunburst_chart(sector_data, theme_mode='light'):
+    """
+    Crea un gráfico sunburst para la composición del empleo por sector.
+    """
+    theme_colors = get_theme_colors(theme_mode)
+    
+    labels = ["Total Empleo Privado"]
+    parents = [""]
+    values = []
+
+    # Sumar el total de todos los sectores para el padre
+    total_employment = sum(df.iloc[-1]['value'] for df in sector_data.values())
+    values.append(total_employment)
+
+    for sector, df in sector_data.items():
+        labels.append(sector)
+        parents.append("Total Empleo Privado")
+        values.append(df.iloc[-1]['value'])
+
+    fig = go.Figure(go.Sunburst(
+        labels=labels,
+        parents=parents,
+        values=values,
+        branchvalues="total",
+        hovertemplate='<b>%{label} </b> <br> Empleo: %{value:,.0f}K<br> Proporción: %{percentParent:.2%}',
+        marker=dict(colors=px.colors.qualitative.Plotly)
+    ))
+
+    fig.update_layout(
+        title='Composición del Empleo por Sector',
+        height=600,
+        paper_bgcolor=theme_colors['card_bg'],
+        font=dict(color=theme_colors['text'])
+    )
+
+    return fig
+
+def create_trend_chart(data, title, y_title, color=COLOR_PALETTE['primary'], theme_mode='light'):
     """
     Crea un gráfico de tendencia con Plotly
     """
     fig = go.Figure()
+    
+    # Obtener colores del tema
+    theme_colors = get_theme_colors(theme_mode)
+    chart_colors = get_theme_chart_colors(theme_mode)
+    template = get_plotly_template(theme_mode)
+    
+    # Si no se especifica color, usar el primary del tema
+    if color == COLOR_PALETTE['primary']:
+        color = theme_colors['primary']
     
     fig.add_trace(go.Scatter(
         x=data['date'],
@@ -182,27 +307,32 @@ def create_trend_chart(data, title, y_title, color=COLOR_PALETTE['primary']):
             'text': title,
             'x': 0.5,
             'xanchor': 'center',
-            'font': {'size': 18, 'color': COLOR_PALETTE['text']}
+            'font': {'size': 18, 'color': chart_colors['text_color']}
         },
         xaxis_title="Fecha",
         yaxis_title=y_title,
-        template='plotly_white',
+        template=template,
         height=400,
         showlegend=False,
-        font=dict(family="Arial, sans-serif", size=12),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
+        font=dict(family="Arial, sans-serif", size=12, color=chart_colors['text_color']),
+        plot_bgcolor=chart_colors['plot_bgcolor'],
+        paper_bgcolor=chart_colors['paper_bgcolor']
     )
     
-    fig.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)')
-    fig.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)')
+    fig.update_xaxes(showgrid=True, gridcolor=chart_colors['grid_color'])
+    fig.update_yaxes(showgrid=True, gridcolor=chart_colors['grid_color'])
     
     return fig
 
-def create_combined_chart(data_dict):
+def create_combined_chart(data_dict, theme_mode='light'):
     """
     Crea un gráfico combinado con múltiples métricas
     """
+    # Obtener colores del tema
+    theme_colors = get_theme_colors(theme_mode)
+    chart_colors = get_theme_chart_colors(theme_mode)
+    template = get_plotly_template(theme_mode)
+    
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=('Tasa de Desempleo', 'Vacantes de Trabajo', 'Tasa de Renuncias', 'Ratio Vacantes/Desempleo'),
@@ -215,7 +345,7 @@ def create_combined_chart(data_dict):
             go.Scatter(x=data_dict['unemployment_rate']['date'], 
                       y=data_dict['unemployment_rate']['value'],
                       name='Desempleo (%)',
-                      line=dict(color=COLOR_PALETTE['warning'])),
+                      line=dict(color=theme_colors['warning'])),
             row=1, col=1
         )
     
@@ -225,7 +355,7 @@ def create_combined_chart(data_dict):
             go.Scatter(x=data_dict['job_openings']['date'], 
                       y=data_dict['job_openings']['value'],
                       name='Vacantes (Miles)',
-                      line=dict(color=COLOR_PALETTE['primary'])),
+                      line=dict(color=theme_colors['primary'])),
             row=1, col=2
         )
     
@@ -235,7 +365,7 @@ def create_combined_chart(data_dict):
             go.Scatter(x=data_dict['quits_rate']['date'], 
                       y=data_dict['quits_rate']['value'],
                       name='Renuncias (%)',
-                      line=dict(color=COLOR_PALETTE['success'])),
+                      line=dict(color=theme_colors['success'])),
             row=2, col=1
         )
     
@@ -245,17 +375,22 @@ def create_combined_chart(data_dict):
             go.Scatter(x=data_dict['vacancy_unemployment_ratio']['date'], 
                       y=data_dict['vacancy_unemployment_ratio']['value'],
                       name='Ratio V/D',
-                      line=dict(color=COLOR_PALETTE['info'])),
+                      line=dict(color=theme_colors['info'])),
             row=2, col=2
         )
     
     fig.update_layout(
         title='Indicadores Clave del Mercado Laboral',
-        template='plotly_white',
+        template=template,
         height=600,
         showlegend=False,
-        font=dict(family="Arial, sans-serif", size=12)
+        font=dict(family="Arial, sans-serif", size=12, color=chart_colors['text_color']),
+        plot_bgcolor=chart_colors['plot_bgcolor'],
+        paper_bgcolor=chart_colors['paper_bgcolor']
     )
+    
+    # Actualizar el color del texto de los subtítulos
+    fig.update_annotations(font=dict(color=chart_colors['text_color']))
     
     return fig
 
@@ -425,12 +560,25 @@ def main():
     """
     Función principal del dashboard
     """
+    # Control de tema en sidebar
+    st.sidebar.header("⚙️ Configuración")
+    
+    # Selector de tema
+    st.sidebar.markdown("### 🎨 Tema")
+    theme_mode = st.sidebar.selectbox(
+        "Seleccionar tema:",
+        options=["light", "dark"],
+        format_func=lambda x: "🌞 Claro" if x == "light" else "🌙 Oscuro",
+        index=0,
+        key="theme_selector"
+    )
+    
+    # Aplicar CSS según el tema seleccionado
+    apply_custom_css(theme_mode)
+    
     # Header principal
     st.markdown('<h1 class="main-header">Dashboard Mercado Laboral USA</h1>', 
                 unsafe_allow_html=True)
-    
-    # Sidebar para controles
-    st.sidebar.header("Configuración")
     
     # Control para forzar actualización
     force_refresh = st.sidebar.button("🔄 Actualizar Datos")
@@ -440,26 +588,65 @@ def main():
     st.sidebar.markdown("- **FRED**: Federal Reserve Economic Data")
     st.sidebar.markdown("- **BLS**: Bureau of Labor Statistics")
     
-    # Selector de modo de datos
-    use_sample_data = st.sidebar.checkbox("Usar datos de muestra", value=True, 
-                                         help="Activa para usar datos simulados en lugar de APIs reales")
+    # Información de la base de datos
+    db_status = get_database_status()
+    if 'error' not in db_status:
+        st.sidebar.markdown("### Estado de la Base de Datos")
+        st.sidebar.markdown(f"**Series disponibles**: {db_status['total_series']}")
+        st.sidebar.markdown(f"**Registros totales**: {db_status['total_records']:,}")
+        if db_status['last_update']:
+            st.sidebar.markdown(f"**Última actualización**: {db_status['last_update'][:16]}")
     
-    # Cargar datos
-    with st.spinner("Cargando datos del mercado laboral..."):
+    # Opción para actualización completa
+    if st.sidebar.button("🔄 Actualizar desde APIs", help="Obtiene los datos más recientes desde BLS y FRED"):
+        force_refresh = True
+        st.sidebar.success("Actualización programada")
+    else:
+        force_refresh = False
+    
+    # Cargar datos desde SQLite
+    with st.spinner("Cargando datos del mercado laboral desde SQLite..."):
         try:
-            if use_sample_data:
-                data_dict = generate_sample_data()
-                st.sidebar.success("Usando datos de muestra para demostración")
-            else:
+            data_dict = load_labor_data(force_refresh=force_refresh)
+            
+            if not data_dict:
+                st.error("🚨 No hay datos disponibles en la base de datos")
+                st.info("🔧 Intentando poblar la base de datos...")
+                
+                # Intentar poblar la base de datos
+                collector = LaborMarketDataCollector()
+                collector.refresh_all_data()
                 data_dict = load_labor_data()
+                
                 if not data_dict:
-                    st.error("No se pudieron cargar datos de las APIs. Verifica la configuración.")
+                    st.error("No se pudo poblar la base de datos. Verifica la configuración de APIs.")
                     return
-                st.sidebar.success("Datos cargados desde APIs")
+            
+            # Determinar fuente de datos
+            sample_data_info = ""
+            if db_status.get('series_details'):
+                sources = [detail[2] for detail in db_status['series_details'] if detail[2]]
+                if sources and sources[0] == 'SAMPLE':
+                    sample_data_info = " (datos de ejemplo)"
+                elif any('FRED' in source or 'BLS' in source for source in sources):
+                    sample_data_info = " (datos reales de APIs)"
+            
+            st.sidebar.success(f"📊 Datos cargados desde SQLite{sample_data_info}")
+            
         except Exception as e:
-            st.error(f"Error cargando datos: {e}")
-            st.info("Usando datos de muestra como respaldo...")
-            data_dict = generate_sample_data()
+            st.error(f"❌ Error cargando datos: {e}")
+            st.info("🔄 Reintentando con actualización completa...")
+            
+            try:
+                data_dict = load_labor_data(force_refresh=True)
+                if data_dict:
+                    st.sidebar.success("📊 Datos cargados con actualización completa")
+                else:
+                    st.error("Error crítico: No se pudieron cargar datos")
+                    return
+            except Exception as e2:
+                st.error(f"Error crítico: {e2}")
+                return
     
     if not data_dict:
         st.error("No hay datos disponibles para mostrar")
@@ -477,75 +664,62 @@ def main():
     
     # KPIs principales
     st.markdown("### 📊 Indicadores Principales")
-    
+
     kpi_cols = st.columns(4)
-    
-    # KPI 1: Tasa de Desempleo
-    if 'unemployment_rate' in data_dict and not data_dict['unemployment_rate'].empty:
-        latest_unemployment = data_dict['unemployment_rate'].iloc[-1]
-        prev_unemployment = data_dict['unemployment_rate'].iloc[-2] if len(data_dict['unemployment_rate']) > 1 else None
-        delta_unemployment = ((latest_unemployment['value'] - prev_unemployment['value']) / prev_unemployment['value'] * 100) if prev_unemployment is not None else None
-        
-        with kpi_cols[0]:
-            create_kpi_card(
-                "Tasa de Desempleo",
-                f"{latest_unemployment['value']:.1f}%",
-                delta_unemployment,
-                "bad" if delta_unemployment and delta_unemployment > 0 else "good"
-            )
-    
-    # KPI 2: Vacantes de Trabajo
-    if 'job_openings' in data_dict and not data_dict['job_openings'].empty:
-        latest_openings = data_dict['job_openings'].iloc[-1]
-        with kpi_cols[1]:
-            create_kpi_card(
-                "Vacantes de Trabajo",
-                f"{latest_openings['value']:,.0f}K"
-            )
-    
-    # KPI 3: Tasa de Renuncias
-    if 'quits_rate' in data_dict and not data_dict['quits_rate'].empty:
-        latest_quits = data_dict['quits_rate'].iloc[-1]
-        with kpi_cols[2]:
-            create_kpi_card(
-                "Tasa de Renuncias",
-                f"{latest_quits['value']:.1f}%"
-            )
-    
-    # KPI 4: Ratio Vacantes/Desempleo
-    if 'vacancy_unemployment_ratio' in data_dict and not data_dict['vacancy_unemployment_ratio'].empty:
-        latest_ratio = data_dict['vacancy_unemployment_ratio'].iloc[-1]
-        with kpi_cols[3]:
-            create_kpi_card(
-                "Ratio Vacantes/Desempleo",
-                f"{latest_ratio['value']:.2f}"
-            )
+    kpi_metrics = [
+        ('unemployment_rate', 'Tasa de Desempleo', '{:.1f}%'),
+        ('job_openings', 'Vacantes de Trabajo', '{:,.0f}K'),
+        ('quits_rate', 'Tasa de Renuncias', '{:.1f}%'),
+        ('vacancy_unemployment_ratio', 'Ratio Vacantes/Desempleo', '{:.2f}')
+    ]
+
+    for i, (metric, title, value_format) in enumerate(kpi_metrics):
+        if metric in data_dict and not data_dict[metric].empty:
+            with kpi_cols[i]:
+                st.markdown(f"<h3 style='text-align: center;'>{title}</h3>", unsafe_allow_html=True)
+                
+                latest_data = data_dict[metric].iloc[-1]
+                previous_data = data_dict[metric].iloc[-2] if len(data_dict[metric]) > 1 else latest_data
+
+                bullet_fig = create_bullet_chart(
+                    title="",
+                    value=latest_data['value'],
+                    previous_value=previous_data['value'],
+                    theme_mode=theme_mode
+                )
+                st.plotly_chart(bullet_fig, use_container_width=True)
+
+                sparkline_fig = create_sparkline_chart(data_dict[metric].tail(12), theme_mode=theme_mode)
+                st.plotly_chart(sparkline_fig, use_container_width=True)
     
     st.markdown("---")
     
     # Crear pestañas principales del dashboard
-    main_tabs = st.tabs(["📊 Análisis de Datos", "📅 Calendario de Publicaciones", "🔗 Enlaces Útiles"])
+    main_tabs = st.tabs(["📊 Análisis de Datos", "📈 Composición del Empleo", "📅 Calendario de Publicaciones", "🔗 Enlaces Útiles"])
     
     with main_tabs[0]:  # Pestaña de Análisis
         st.markdown("### 📈 Tendencias Históricas")
         
         # Gráfico combinado
         if len(data_dict) >= 2:
-            combined_fig = create_combined_chart(data_dict)
+            combined_fig = create_combined_chart(data_dict, theme_mode)
             st.plotly_chart(combined_fig, use_container_width=True)
         
         # Gráficos individuales en tabs
         tab_names = []
         tab_data = []
         
+        # Obtener colores del tema actual
+        theme_colors = get_theme_colors(theme_mode)
+        
         metric_configs = [
-            ('unemployment_rate', 'Tasa de Desempleo (%)', COLOR_PALETTE['warning']),
-            ('job_openings', 'Vacantes de Trabajo (Miles)', COLOR_PALETTE['primary']),
-            ('quits_rate', 'Tasa de Renuncias (%)', COLOR_PALETTE['success']),
-            ('layoffs_rate', 'Tasa de Despidos (%)', COLOR_PALETTE['warning']),
-            ('labor_force_participation', 'Participación Laboral (%)', COLOR_PALETTE['info']),
-            ('payroll_employment', 'Empleo en Nóminas (Miles)', COLOR_PALETTE['primary']),
-            ('avg_hourly_earnings', 'Salario Promedio/Hora ($)', COLOR_PALETTE['success'])
+            ('unemployment_rate', 'Tasa de Desempleo (%)', theme_colors['warning']),
+            ('job_openings', 'Vacantes de Trabajo (Miles)', theme_colors['primary']),
+            ('quits_rate', 'Tasa de Renuncias (%)', theme_colors['success']),
+            ('layoffs_rate', 'Tasa de Despidos (%)', theme_colors['warning']),
+            ('labor_force_participation', 'Participación Laboral (%)', theme_colors['info']),
+            ('payroll_employment', 'Empleo en Nóminas (Miles)', theme_colors['primary']),
+            ('avg_hourly_earnings', 'Salario Promedio/Hora ($)', theme_colors['success'])
         ]
         
         for metric, title, color in metric_configs:
@@ -558,7 +732,7 @@ def main():
             
             for i, (tab, (data, title, color)) in enumerate(zip(metric_tabs, tab_data)):
                 with tab:
-                    fig = create_trend_chart(data, title, title.split('(')[1].rstrip(')') if '(' in title else title, color)
+                    fig = create_trend_chart(data, title, title.split('(')[1].rstrip(')') if '(' in title else title, color, theme_mode)
                     st.plotly_chart(fig, use_container_width=True)
                     
                     # Mostrar estadísticas básicas
@@ -569,11 +743,19 @@ def main():
                         st.metric("Promedio", f"{data['value'].mean():.2f}")
                     with col3:
                         st.metric("Desv. Estándar", f"{data['value'].std():.2f}")
-    
-    with main_tabs[1]:  # Pestaña de Calendario
+
+    with main_tabs[1]: # Pestaña de Composición del Empleo
+        st.markdown("### 📈 Composición del Empleo por Sector")
+        if 'sector_employment' in data_dict:
+            sunburst_fig = create_sunburst_chart(data_dict['sector_employment'], theme_mode)
+            st.plotly_chart(sunburst_fig, use_container_width=True)
+        else:
+            st.warning("No hay datos de empleo por sector disponibles.")
+
+    with main_tabs[2]:  # Pestaña de Calendario
         create_publication_calendar()
     
-    with main_tabs[2]:  # Pestaña de Enlaces
+    with main_tabs[3]:  # Pestaña de Enlaces
         create_report_links_section()
     
     # Footer con información adicional
@@ -593,7 +775,13 @@ def main():
         st.markdown(f"- **Última actualización**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         st.markdown(f"- **Métricas disponibles**: {len(data_dict)}")
         st.markdown(f"- **Período de datos**: {YEARS_OF_DATA} años")
-        st.markdown(f"- **Fuente**: {'Datos de muestra' if use_sample_data else 'APIs en vivo'}")
+        st.markdown(f"- **Base de datos**: SQLite ({db_status.get('total_records', 0):,} registros)")
+        
+        # Mostrar información de fuentes de datos
+        if db_status.get('series_details'):
+            sources = set(detail[2] for detail in db_status['series_details'] if detail[2])
+            if sources:
+                st.markdown(f"- **Fuentes**: {', '.join(sources)}")
 
 if __name__ == "__main__":
     main()

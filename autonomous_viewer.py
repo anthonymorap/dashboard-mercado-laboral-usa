@@ -58,21 +58,21 @@ class AutonomousViewer:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             
-            print("⏳ Esperando a que Streamlit se inicie...")
+            print("[WAITING] Esperando a que Streamlit se inicie...")
             time.sleep(8)  # Dar tiempo para que inicie
             
-            print("✅ Servidor Streamlit iniciado")
+            print("[SUCCESS] Servidor Streamlit iniciado")
             return True
             
         except Exception as e:
-            print(f"❌ Error iniciando Streamlit: {e}")
+            print(f"[ERROR] Error iniciando Streamlit: {e}")
             return False
     
     def setup_headless_driver(self):
         """
         Configura Chrome en modo headless para operación autónoma
         """
-        print("🤖 Configurando Chrome en modo autónomo...")
+        print("[SETUP] Configurando Chrome en modo autonomo...")
         
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # Sin ventana visible
@@ -88,14 +88,14 @@ class AutonomousViewer:
         service.log_path = os.devnull  # Suprimir logs de ChromeDriver
         
         self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        print("✅ Chrome configurado en modo autónomo")
+        print("[SUCCESS] Chrome configurado en modo autonomo")
         
     def wait_for_dashboard_load(self, timeout=30):
         """
         Espera a que el dashboard cargue completamente
         """
         try:
-            print("⏳ Esperando carga del dashboard...")
+            print("[WAITING] Esperando carga del dashboard...")
             
             # Esperar elemento principal de Streamlit
             WebDriverWait(self.driver, timeout).until(
@@ -105,11 +105,11 @@ class AutonomousViewer:
             # Esperar a que se carguen los datos
             time.sleep(5)
             
-            print("✅ Dashboard cargado completamente")
+            print("[SUCCESS] Dashboard cargado completamente")
             return True
             
         except TimeoutException:
-            print("⚠️ Timeout esperando carga del dashboard")
+            print("[WARNING] Timeout esperando carga del dashboard")
             return False
     
     def capture_full_dashboard(self, description="autonomous"):
@@ -133,7 +133,7 @@ class AutonomousViewer:
             with open(html_filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            print(f"📸 Screenshot capturado: {filename}")
+            print(f"[SCREENSHOT] Screenshot capturado: {filename}")
             
             return {
                 'screenshot': filename,
@@ -143,7 +143,7 @@ class AutonomousViewer:
             }
             
         except Exception as e:
-            print(f"❌ Error capturando screenshot: {e}")
+            print(f"[ERROR] Error capturando screenshot: {e}")
             return None
     
     def analyze_dashboard_content(self):

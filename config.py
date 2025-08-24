@@ -31,12 +31,38 @@ SERIES_MAPPING = {
     'employment_cost_index': 'CIU2010000000000SA', # Employment Cost Index
 }
 
-# Configuración de datos
+# Series IDs para empleo por sector (BLS)
+SECTOR_EMPLOYMENT_SERIES = {
+    'Goods-Producing': 'CES1000000001',
+    'Construction': 'CES2000000001',
+    'Manufacturing': 'CES3000000001',
+    'Trade, Transportation, and Utilities': 'CES4000000001',
+    'Information': 'CES5000000001',
+    'Financial Activities': 'CES5500000001',
+    'Professional and Business Services': 'CES6000000001',
+    'Education and Health Services': 'CES6500000001',
+    'Leisure and Hospitality': 'CES7000000001',
+    'Other Services': 'CES8000000001',
+    'Government': 'CES9000000001',
+}
+
+# Configuración de datos y base de datos
 DATA_UPDATE_HOUR = int(os.getenv('DATA_UPDATE_HOUR', 9))
 CACHE_DURATION_HOURS = int(os.getenv('CACHE_DURATION_HOURS', 24))
+DATABASE_AUTO_POPULATE = bool(os.getenv('DATABASE_AUTO_POPULATE', True))
+DATABASE_FALLBACK_TO_SAMPLE = bool(os.getenv('DATABASE_FALLBACK_TO_SAMPLE', True))
 
 # Configuración de la base de datos SQLite
 DATABASE_PATH = "data/labor_market.db"
+
+# Configuración del sistema de datos único (SQLite como fuente principal)
+DATA_SYSTEM_CONFIG = {
+    'use_sqlite_as_primary': True,
+    'auto_populate_on_empty': True,
+    'fallback_to_sample_data': True,
+    'refresh_threshold_days': 7,
+    'min_series_required': 5
+}
 
 # Configuración de Streamlit
 STREAMLIT_CONFIG = {
@@ -46,17 +72,40 @@ STREAMLIT_CONFIG = {
     'initial_sidebar_state': "expanded"
 }
 
-# Colores para las visualizaciones (paleta profesional)
-COLOR_PALETTE = {
-    'primary': '#1f77b4',      # Azul principal
-    'secondary': '#ff7f0e',    # Naranja
-    'success': '#2ca02c',      # Verde
-    'warning': '#d62728',      # Rojo
-    'info': '#9467bd',         # Púrpura
-    'neutral': '#7f7f7f',      # Gris
-    'background': '#f8f9fa',   # Gris claro
-    'text': '#212529'          # Negro texto
+# Paletas de colores para temas claro y oscuro
+COLOR_PALETTES = {
+    'light': {
+        'primary': '#1f77b4',      # Azul principal
+        'secondary': '#ff7f0e',    # Naranja
+        'success': '#2ca02c',      # Verde
+        'warning': '#d62728',      # Rojo
+        'info': '#9467bd',         # Púrpura
+        'neutral': '#7f7f7f',      # Gris
+        'background': '#f8f9fa',   # Gris claro
+        'text': '#212529',         # Negro texto
+        'card_bg': '#ffffff',      # Fondo tarjetas
+        'border': '#dee2e6',       # Bordes
+        'sidebar_bg': '#f8f9fa',   # Fondo sidebar
+        'chart_bg': 'rgba(0,0,0,0)' # Fondo gráficos
+    },
+    'dark': {
+        'primary': '#4dabf7',      # Azul más claro
+        'secondary': '#ffa94d',    # Naranja más suave
+        'success': '#51cf66',      # Verde más brillante
+        'warning': '#ff6b6b',      # Rojo más suave
+        'info': '#b197fc',         # Púrpura más claro
+        'neutral': '#adb5bd',      # Gris más claro
+        'background': '#1a1a1a',   # Fondo principal oscuro
+        'text': '#e9ecef',         # Texto claro
+        'card_bg': '#2d2d30',      # Fondo tarjetas oscuro
+        'border': '#495057',       # Bordes oscuros
+        'sidebar_bg': '#212529',   # Fondo sidebar oscuro
+        'chart_bg': 'rgba(0,0,0,0)' # Fondo gráficos
+    }
 }
+
+# Paleta por defecto (retrocompatibilidad)
+COLOR_PALETTE = COLOR_PALETTES['light']
 
 # Límites para alertas (thresholds)
 ALERT_THRESHOLDS = {
